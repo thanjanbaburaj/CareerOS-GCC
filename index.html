@@ -1,3 +1,16 @@
+<script>
+  (function() {
+    var pwd = localStorage.getItem('careeros_access');
+    if (pwd !== 'Jobsearch@2026#') {
+      var input = window.prompt('CareerOS — Enter access password:');
+      if (input !== 'YOUR_SECRET_PASSWORD') {
+        document.body.innerHTML = '<div style="display:flex;align-items:center;justify-content:center;height:100vh;background:#0A1628;color:#C9A84C;font-family:sans-serif;font-size:18px;">Access denied.</div>';
+        return;
+      }
+      localStorage.setItem('careeros_access', input);
+    }
+  })();
+</script>
 <!DOCTYPE html>
 <html lang="en">
   <head>
