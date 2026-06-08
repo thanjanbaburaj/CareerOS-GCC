@@ -1,25 +1,25 @@
-import React, { useState } from 'react'
+import React from 'react'
 import { Outlet, NavLink, useNavigate } from 'react-router-dom'
 import { useAuth } from '../../hooks/useAuth.js'
 import authStore from '../../store/authStore.js'
 
 const NAV = [
-  { to: '/dashboard',  icon: '⬛', label: 'Dashboard'   },
-  { to: '/jobs',       icon: '🔍', label: 'Job Feed'    },
-  { to: '/tracker',    icon: '📋', label: 'Tracker'     },
-  { to: '/cv',         icon: '📄', label: 'CV Builder'  },
-  { to: '/interview',  icon: '🎯', label: 'Interview'   },
-  { to: '/network',    icon: '🤝', label: 'Network'     },
-  { to: '/freelance',  icon: '💼', label: 'Freelance'   },
-  { to: '/wellbeing',  icon: '💚', label: 'Wellbeing'   },
-  { to: '/community',  icon: '👥', label: 'Community'   },
-  { to: '/assistant',  icon: '✨', label: 'AI Assistant'},
+  { to: '/dashboard',  icon: '⬛', label: 'Dashboard'    },
+  { to: '/jobs',       icon: '🔍', label: 'Job Feed'     },
+  { to: '/tracker',    icon: '📋', label: 'Tracker'      },
+  { to: '/cv',         icon: '📄', label: 'CV Builder'   },
+  { to: '/interview',  icon: '🎯', label: 'Interview'    },
+  { to: '/network',    icon: '🤝', label: 'Network'      },
+  { to: '/freelance',  icon: '💼', label: 'Freelance'    },
+  { to: '/wellbeing',  icon: '💚', label: 'Wellbeing'    },
+  { to: '/community',  icon: '👥', label: 'Community'    },
+  { to: '/assistant',  icon: '✨', label: 'AI Assistant' },
+  { to: '/settings',   icon: '⚙️', label: 'Settings'     },
 ]
 
 export default function AppShell() {
-  const { user }      = useAuth()
-  const navigate      = useNavigate()
-  const [open, setOpen] = useState(false)
+  const { user }  = useAuth()
+  const navigate  = useNavigate()
 
   function handleLogout() {
     authStore.logout()
@@ -27,37 +27,20 @@ export default function AppShell() {
   }
 
   const initials = user?.name
-    ? user.name.split(' ').map(w => w[0]).join('').slice(0,2).toUpperCase()
+    ? user.name.split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase()
     : 'U'
 
   return (
     <div style={{ display: 'flex', minHeight: '100vh', background: 'var(--bg-deep)' }}>
 
-      {/* Mobile overlay */}
-      {open && (
-        <div
-          onClick={() => setOpen(false)}
-          style={{
-            position: 'fixed', inset: 0, zIndex: 40,
-            background: 'rgba(0,0,0,0.6)',
-            display: 'none',
-          }}
-        />
-      )}
-
       {/* Sidebar */}
       <aside style={{
-        width: 220,
-        minHeight: '100vh',
+        width: 220, minHeight: '100vh',
         background: 'var(--bg-surface)',
         borderRight: '1px solid var(--border)',
-        display: 'flex',
-        flexDirection: 'column',
-        flexShrink: 0,
-        position: 'sticky',
-        top: 0,
-        height: '100vh',
-        overflowY: 'auto',
+        display: 'flex', flexDirection: 'column',
+        flexShrink: 0, position: 'sticky',
+        top: 0, height: '100vh', overflowY: 'auto',
       }}>
         {/* Logo */}
         <div style={{ padding: '24px 20px 20px', borderBottom: '1px solid var(--border)' }}>
