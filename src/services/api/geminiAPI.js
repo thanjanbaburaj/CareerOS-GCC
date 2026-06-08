@@ -1,135 +1,188 @@
 /**
- * CareerOS GCC — Gemini AI Service
- * Free tier. Standalone. Zero external deps.
- * Caches responses to conserve the 1,500/day limit.
- * User provides their own free API key via Settings.
+ * CareerOS GCC — AI Service
+ * Primary: Google Gemini (free tier)
+ * Fallback: Groq (free tier, very fast)
+ * Model names updated for 2026 API versions
  */
 
-const CACHE_PREFIX = 'careeros_ai_'
-const CACHE_TTL    = 24 * 60 * 60 * 1000   // 24h
+const CACHE_PREFIX = 'careeros_ai_';
+const CACHE_TTL    = 24 * 60 * 60 * 1000; // 24 hours
 
-function getKey() {
-  return localStorage.getItem('careeros_gemini_key') || ''
-}
+function getGeminiKey() { return localStorage.getItem('careeros_gemini_key') || ''; }
+function getGroqKey()   { return localStorage.getItem('careeros_groq_key')   || ''; }
+function getAIProvider(){ return localStorage.getItem('careeros_ai_provider') || 'gemini'; }
 
 function cacheGet(hash) {
   try {
-    const raw = localStorage.getItem(CACHE_PREFIX + hash)
-    if (!raw) return null
-    const { text, ts } = JSON.parse(raw)
-    if (Date.now() - ts > CACHE_TTL) return null
-    return text
-  } catch { return null }
+    var raw = localStorage.getItem(CACHE_PREFIX + hash);
+    if (!raw) return null;
+    var obj = JSON.parse(raw);
+    if (Date.now() - obj.ts > CACHE_TTL) return null;
+    return obj.text;
+  } catch { return null; }
 }
 
 function cacheSet(hash, text) {
-  try {
-    localStorage.setItem(CACHE_PREFIX + hash, JSON.stringify({ text, ts: Date.now() }))
-  } catch {}
+  try { localStorage.setItem(CACHE_PREFIX + hash, JSON.stringify({ text, ts: Date.now() })); } catch {}
 }
 
 function hashStr(str) {
-  let h = 0
-  for (let i = 0; i < str.length; i++) {
-    h = ((h << 5) - h) + str.charCodeAt(i)
-    h |= 0
+  var h = 0;
+  for (var i = 0; i < str.length; i++) {
+    h = Math.imul(31, h) + str.charCodeAt(i) | 0;
   }
-  return Math.abs(h).toString(36)
+  return Math.abs(h).toString(36);
 }
 
+/* ── Gemini ─────────────────────────────────────── */
 async function callGemini(prompt) {
-  const key = getKey()
-  if (!key) {
-    return 'Please add your free Gemini API key in Settings to enable AI features.'
-  }
+  const key = getGeminiKey();
+  if (!key) return null; // Fall through to next provider
 
-  const hash   = hashStr(prompt.slice(0, 200))
-  const cached = cacheGet(hash)
-  if (cached) return cached
+  // Try models in order — 2.0-flash is the current free model as of 2026
+  const MODELS = [
+    'gemini-2.0-flash',
+    'gemini-2.0-flash-lite',
+    'gemini-1.5-flash-latest',
+    'gemini-1.5-flash',
+  ];
+
+  for (const model of MODELS) {
+    try {
+      const res = await fetch(
+        `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${key}`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            contents: [{ parts: [{ text: prompt }] }],
+            generationConfig: { maxOutputTokens: 1024, temperature: 0.7 },
+          }),
+        }
+      );
+      const data = await res.json();
+      if (data.error) {
+        if (data.error.code === 404) continue; // Try next model
+        return `AI error: ${data.error.message}`;
+      }
+      const text = data.candidates?.[0]?.content?.parts?.[0]?.text || '';
+      if (text) return text;
+    } catch { continue; }
+  }
+  return null; // All models failed, try fallback
+}
+
+/* ── Groq (free, very fast, no card needed) ──────── */
+async function callGroq(prompt) {
+  const key = getGroqKey();
+  if (!key) return null;
 
   try {
-    const res = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${key}`,
-      {
-        method:  'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          contents: [{ parts: [{ text: prompt }] }],
-          generationConfig: { maxOutputTokens: 1024, temperature: 0.7 },
-        }),
-      }
-    )
-    if (!res.ok) {
-      const err = await res.json()
-      throw new Error(err.error?.message || 'Gemini API error')
-    }
-    const data = await res.json()
-    const text = data.candidates?.[0]?.content?.parts?.[0]?.text || ''
-    cacheSet(hash, text)
-    return text
-  } catch (e) {
-    return `AI error: ${e.message}. Check your Gemini API key in Settings.`
-  }
+    const res = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${key}`,
+      },
+      body: JSON.stringify({
+        model: 'llama-3.1-70b-versatile',
+        messages: [{ role: 'user', content: prompt }],
+        max_tokens: 1024,
+        temperature: 0.7,
+      }),
+    });
+    const data = await res.json();
+    return data.choices?.[0]?.message?.content || null;
+  } catch { return null; }
 }
 
-// ── Named AI functions ───────────────────────────────
+/* ── Master call function ────────────────────────── */
+async function callAI(prompt) {
+  const hash   = hashStr(prompt.slice(0, 300));
+  const cached = cacheGet(hash);
+  if (cached) return cached;
+
+  const provider = getAIProvider();
+  let result = null;
+
+  if (provider === 'groq') {
+    result = await callGroq(prompt);
+    if (!result) result = await callGemini(prompt);
+  } else {
+    result = await callGemini(prompt);
+    if (!result) result = await callGroq(prompt);
+  }
+
+  if (!result) {
+    return 'No AI key configured. Go to ⚙️ Settings and add your free Gemini or Groq API key.';
+  }
+
+  cacheSet(hash, result);
+  return result;
+}
+
+/* ── Named functions ─────────────────────────────── */
 
 export async function generateCoverLetter({ jobTitle, company, cvKeywords, tone = 'professional' }) {
-  const prompt = `Write a compelling, concise cover letter for a ${jobTitle} position at ${company} in the UAE/GCC region.
-The candidate's key skills: ${cvKeywords.join(', ')}.
-Tone: ${tone}. Length: 3 short paragraphs. No placeholders. No Dear Hiring Manager.
-Start directly with a strong opening sentence. End with a confident call to action.`
-  return callGemini(prompt)
+  return callAI(`Write a compelling cover letter for a ${jobTitle} position at ${company} in UAE/GCC.
+Key skills: ${(cvKeywords || []).join(', ')}.
+Tone: ${tone}. 3 short paragraphs. No "Dear Hiring Manager". Start with a strong hook. End with confidence.`);
 }
 
 export async function analyseGap({ jobDescription, cvKeywords }) {
-  const prompt = `Compare this CV profile against this job description and give a brief gap analysis.
+  return callAI(`Analyse CV vs job description for a GCC role.
+CV keywords: ${(cvKeywords || []).join(', ')}
+Job description: ${(jobDescription || '').slice(0, 800)}
 
-CV Keywords: ${cvKeywords.join(', ')}
+Reply in this exact format:
+MATCH_SCORE: [0-100]
+STRENGTHS: [comma list]
+GAPS: [comma list]
+ADVICE: [2 sentences]`);
+}
 
-Job Description: ${jobDescription.slice(0, 800)}
+export async function reviewCV(cvText) {
+  return callAI(`You are a senior GCC recruitment expert. Review this CV and give actionable feedback.
 
-Respond in this exact format:
-MATCH_SCORE: [number 0-100]
-STRENGTHS: [comma-separated list of matching skills]
-GAPS: [comma-separated list of missing skills]
-ADVICE: [2 sentence improvement suggestion]`
-  return callGemini(prompt)
+CV:
+${cvText.slice(0, 2000)}
+
+Provide:
+1. Overall score (0-100) and why
+2. Top 3 strengths
+3. Top 3 improvements needed
+4. ATS optimisation tips for UAE/GCC job boards
+5. Rewrite the professional summary section
+Format clearly with headings.`);
 }
 
 export async function generateInterviewQuestions({ jobTitle, company, industry }) {
-  const prompt = `Generate 8 likely interview questions for a ${jobTitle} role at ${company || 'a company'} in the ${industry || 'GCC'} market.
-Mix of: behavioural, situational, and technical questions.
-Format: numbered list. Include one question about GCC/UAE market knowledge.`
-  return callGemini(prompt)
+  return callAI(`Generate 8 likely interview questions for a ${jobTitle} role at ${company || 'a company'} in ${industry || 'GCC'}.
+Mix: behavioural, situational, technical, and one GCC/UAE-specific question.
+Number each question. Be specific and realistic.`);
 }
 
 export async function generateFollowUp({ jobTitle, company, daysSince, stage }) {
-  const prompt = `Write a brief, professional follow-up message for a ${jobTitle} application at ${company}.
-Status: ${stage || 'applied'} ${daysSince} days ago with no response.
-GCC professional norms. Polite. Confident. 3 sentences maximum.`
-  return callGemini(prompt)
+  return callAI(`Write a professional follow-up message for a ${jobTitle} application at ${company}.
+Status: ${stage || 'applied'} ${daysSince} days ago, no response.
+GCC professional norms. Polite, confident. 3 sentences max. Ready to send.`);
 }
 
-export async function answerCareerQuestion(question, userContext = '') {
-  const prompt = `You are CareerOS, a career advisor specialising in the UAE and GCC job market.
-${userContext ? `User context: ${userContext}` : ''}
+export async function answerCareerQuestion(question, userContext) {
+  return callAI(`You are CareerOS, a career advisor specialising in UAE/GCC job market.
+${userContext ? 'User: ' + userContext : ''}
 
 Question: ${question}
 
-Answer concisely in 2-4 sentences. Focus on practical, GCC-specific advice.`
-  return callGemini(prompt)
+Give practical, specific, GCC-aware advice. 2-4 sentences. Bullet points if listing items.`);
 }
 
 export async function buildCVFromAnswers(answers) {
-  const prompt = `Transform these interview answers into professional CV bullet points for a UAE/GCC CV.
-
+  return callAI(`Transform these answers into a professional UAE/GCC CV.
 Answers: ${JSON.stringify(answers)}
 
-For each role/section, produce 2-3 bullet points starting with strong action verbs.
-Quantify where possible. Use professional language. Return as JSON:
-{"summary": "...", "experience": [{"role": "...", "company": "...", "bullets": ["..."]}], "skills": ["..."]}`
-  return callGemini(prompt)
+Return ONLY valid JSON (no markdown):
+{"summary":"...","experience":[{"role":"...","company":"...","period":"...","bullets":["..."]}],"skills":["..."]}`);
 }
 
-export { callGemini }
+export { callAI };
