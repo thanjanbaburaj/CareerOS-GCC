@@ -1,0 +1,42 @@
+{
+  "name": "CareerOS GCC",
+  "short_name": "CareerOS",
+  "description": "Career management platform for UAE and GCC professionals",
+  "start_url": "/careeros-gcc/",
+  "display": "standalone",
+  "background_color": "#0A1628",
+  "theme_color": "#C9A84C",
+  "orientation": "portrait-primary",
+  "icons": [
+    {
+      "src": "/careeros-gcc/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/careeros-gcc/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ],
+  "categories": ["productivity", "business"],
+  "shortcuts": [
+    {
+      "name": "Job Feed",
+      "url": "/careeros-gcc/jobs",
+      "description": "Browse job listings"
+    },
+    {
+      "name": "Tracker",
+      "url": "/careeros-gcc/tracker",
+      "description": "Application tracker"
+    },
+    {
+      "name": "AI Assistant",
+      "url": "/careeros-gcc/assistant",
+      "description": "Career AI advisor"
+    }
+  ]
+}
